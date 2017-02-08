@@ -1,0 +1,4 @@
+pdb2gmx -f "$@" -o b4editconf.gro -ff amber03 -water tip3p -vsite hydrogens -ignh
+editconf -c -f b4editconf.gro -o b4solv.gro -bt Dodecahedron -d 1.0
+genbox -cp b4solv.gro -cs -o b4ions.gro -p topol.top
+

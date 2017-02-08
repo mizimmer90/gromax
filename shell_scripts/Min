@@ -1,0 +1,2 @@
+grompp -f ~/Programs/gromax/em.mdp -c b4em.gro -p topol.top -o em
+mdrun -nice 4 -s em.tpr -o em -c b4equil -v

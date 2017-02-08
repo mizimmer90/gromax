@@ -1,0 +1,95 @@
+#! /usr/bin/python
+
+import argparse
+import numpy as np
+import os
+import subprocess as sp
+
+# arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--filename", "-f", help="pdb filename")
+parser.add_argument("--box_size", "-d", default='1.0', help="box size")
+parser.add_argument(
+    "--box_type", "-bt", default="Dodecahedron", type=str,
+    help="Type of solvation box")
+parser.add_argument(
+    "--forcefield", "-ff", default="amber03", help="protein forcefield")
+parser.add_argument(
+    "--water", "-w", default="tip3p", help="Water model to solvate")
+parser.add_argument(
+    "--vsite", "-vs", default="hydrogens", help="virtual site group")
+
+def print_output(output,err=None):
+    for line in output:
+        print(line)
+    for line in err:
+        print(line)
+    return
+
+def run_commands(cmds):
+    for cmd in cmds:
+        p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
+        output,err = p.communicate()
+        print(output)
+        print(err)
+    return
+
+def water_box(filename, forcefield, water, vsite, box_type, box_size):
+    cmd0 = 'pdb2gmx -f '+filename+' -o b4editconf.gro -ff '+forcefield+\
+        ' -water '+water+' -vsite '+vsite+' -ignh'
+    cmd1 = 'editconf -c -f b4editconf.gro -o b4solv.gro -bt '+\
+        box_type+' -d '+box_size
+    cmd2 = 'genbox -cp b4solv.gro -cs -o b4ions.gro -p topol.top'
+    cmds = [cmd0, cmd1, cmd2]
+    run_commands(cmds)
+    return
+
+def ions():
+    cmd0 = 'mv topol.top topol-noions.top'
+    cmd1 = 'grompp -f ~/Programs/gromax/grompp_scripts/em.mdp '+\
+        '-c b4ions.gro -p topol-noions.top -o ions'
+    cmd2 = 'echo 13 | genion -s ions.tpr -o b4em.gro -p '+\
+        'topol-noions.top -neutral'
+    cmd3 = 'mv topol-noions.top topol.top'
+    cmds = [cmd0, cmd1, cmd2, cmd3]
+    run_commands(cmds)
+    return
+
+def minimize():
+    cmd0 = 'grompp -f ~/Programs/gromax/grompp_scripts/em.mdp '+\
+        '-c b4em.gro -p topol.top -o em'
+    cmd1 = 'mdrun -s em.tpr -o em -c b4equil -v'
+    cmds = [cmd0, cmd1]
+    run_commands(cmds)
+    return
+
+def clean_up():
+    cmds = ['rm *#*']
+    run_commands(cmds)
+    return
+
+# main function
+def entry_point():
+
+    # parse args
+    args = parser.parse_args()
+    filename = os.path.abspath(args.filename)
+    forcefield = args.forcefield
+    box_size = args.box_size
+    box_type = args.box_type
+    water = args.water
+    vsite = args.vsite
+    # generate water-box
+    water_box(
+        filename, forcefield, water, vsite, box_type, box_size)
+    # generate ions
+    ions()
+    # minimize structure
+    minimize()
+    # remove duplicate filenames
+    clean_up()
+
+# starting site
+if __name__=='__main__':
+    entry_point()
+

@@ -1,0 +1,96 @@
+#! /usr/bin/python
+
+import argparse
+import numpy as np
+import os
+import subprocess as sp
+
+# arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--filename", "-f", help="gromacs start file")
+parser.add_argument(
+    "--topology", "-p", default='topol.top', help="Gromacs topology file")
+parser.add_argument(
+    "--threads", "-nt", default="24", type=str,
+    help="Number of cores to use for equilibration")
+parser.add_argument(
+    "--pin", '-P', default=False, action="store_true",  help="pin threads to cores")
+parser.add_argument(
+    "--gpu", "-g", default=False, action="store_true",
+    help="Optionally run on gpu node")
+parser.add_argument(
+    "--pr", "-pr", default=None, help="The position restraint file")
+
+def run_commands(cmds):
+    for cmd in cmds:
+        p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
+        output,err = p.communicate()
+        print(output)
+        print(err)
+    return
+
+def generate_qsub(gpu, threads, filename, pr, topology, pin):
+    # header
+    header = "#!/bin/bash\n"+\
+        "#$ -N equil\n"+\
+        "#$ -S /bin/bash\n"+\
+        "#$ -cwd\n"+\
+        "#$ -o run.out\n"+\
+        "#$ -e run.err\n"
+    # if gpu, add cuda and gpu q
+    if gpu:
+        header += "#$ -q gpu.q\n"+\
+            "#$ -l h_rt=500:00:00,cuda=1\n"
+    else:
+        header += "#$ -q all.q\n"+\
+            "#$ -l h_rt=500:00:00\n"
+    header += "#$ -V\n"+\
+        "#$ -pe smp "+threads+"\n\n"
+    # if gpu, source gpu gromacs
+    if gpu:
+        header += "source /home/shared/Installations/gpu_gromacs511_bash\n\n"
+    # gromacs simulation commands
+    sim_commands = "gmx grompp -f "+pr+" "+\
+        "-c "+filename+" -p "+topology+" -o md -maxwarn 1\n"+\
+        "gmx mdrun -s md -o md -c after_equil -v -nt "+threads+" -ntmpi 1 "+\
+        "-ntomp "+threads+" -x after_equil"
+    if pin:
+        sim_commands += " -pin on"
+    sim_commands += "\n"
+    # trjconv
+    trjconv_commands = "echo '10 0' | gmx trjconv -f after_equil.xtc "+\
+        "-o after_equil_aligned.xtc -s md.tpr -pbc mol -ur compact -cetner\n"
+    trjconv_commands += "echo '10 0' | gmx trjconv -f after_equil.gro "+\
+        "-o after_equil_aligned.gro -s md.tpr -pbc mol -ur compact -center\n"
+    # generate file
+    file_contents = header + sim_commands + trjconv_commands
+    qsub_filename = 'pbs_gpu_equil' if gpu else 'pbs_cpu_equil'
+    qsub_file = open(qsub_filename, 'w')
+    qsub_file.write(file_contents)
+    qsub_file.close()
+    return qsub_filename
+    
+
+# main function
+def entry_point():
+
+    # parse arguments
+    args = parser.parse_args()
+    filename = os.path.abspath(args.filename)
+    topology = args.topology
+    threads = args.threads
+    pin = args.pin
+    gpu = args.gpu
+    pr = args.pr
+    # if pr is not supplied, make it the default in grompp_scripts
+    if pr is None:
+        pr = "~/Programs/gromax/grompp_scripts/pr.mdp"
+    # submut to queue
+    qsub_filename = generate_qsub(gpu, threads, filename, pr, topology, pin)
+    cmd = 'qsub '+qsub_filename
+    run_commands([cmd])
+
+# starting site
+if __name__=='__main__':
+    entry_point()
+

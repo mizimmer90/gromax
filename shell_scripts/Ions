@@ -1,0 +1,4 @@
+mv topol.top topol-noions.top
+grompp -f ~/Programs/gromax/em.mdp -c b4ions.gro -p topol-noions.top -o ions
+echo 13 | genion -s ions.tpr -o b4em.gro -p topol-noions.top -neutral
+mv topol-noions.top topol.top
