@@ -1,6 +1,7 @@
 #! /usr/bin/python
 
 import argparse
+import glob
 import numpy as np
 import os
 import subprocess as sp
@@ -154,7 +155,7 @@ def generate_qsub(gpu, threads, filename, pr, topology, pin):
     sim_commands += "\n"
     # trjconv
     trjconv_commands = "echo '10 0' | gmx trjconv -f after_equil.xtc "+\
-        "-o after_equil_aligned.xtc -s md.tpr -pbc mol -ur compact -cetner\n"
+        "-o after_equil_aligned.xtc -s md.tpr -pbc mol -ur compact -center\n"
     trjconv_commands += "echo '10 0' | gmx trjconv -f after_equil.gro "+\
         "-o after_equil_aligned.gro -s md.tpr -pbc mol -ur compact -center\n"
     # generate file
@@ -191,10 +192,15 @@ def entry_point():
     home_directory = os.path.abspath("./")
     # if clones is greater than 1, submit jobs in clone folders
     if clones > 1:
-        cmds = ['mkdir CLONE'+str(num) for num in range(clones)]
+        current_clones = np.array(
+            [
+                int(clone_folder.split("CLONE")[-1])
+                for clone_folder in glob.glob("CLONE*")])
+        clones_to_run = np.setdiff1d(np.arange(clones), current_clones)
+        cmds = ['mkdir CLONE'+str(num) for num in clones_to_run]
         run_commands(cmds)
-        for num in range(clones):
-            os.chdir("CLONE"+str(num))
+        for clone in clones_to_run:
+            os.chdir("CLONE"+str(clone))
             qsub_filename = generate_qsub(
                 gpu, threads, filename, npt, topology, pin)
             cmd = 'qsub '+qsub_filename
